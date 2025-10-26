@@ -2325,8 +2325,8 @@
             });
         });
         // --- Configuration ---
-// ⚠️ CHANGE THIS TO YOUR BACKEND SERVER ADDRESS 
-var API_BASE_URL = 'http://localhost:5000/api'; 
+// Use relative API path so frontend works when served from backend
+var API_BASE_URL = '/api'; 
 var isAuthenticated = localStorage.getItem('token') ? true : false;
 var userRole = localStorage.getItem('role') || 'guest';
 var currentUser = {}; // To store the logged-in user's profile data
@@ -2366,8 +2366,8 @@ function initApp(requiredRole = 'customer') {
     }
 }
 // --- Configuration ---
-// ⚠️ CHANGE THIS TO YOUR BACKEND SERVER ADDRESS 
-const API_BASE_URL = 'http://localhost:5000/api'; 
+// NOTE: API_BASE_URL already declared above; do not redeclare to avoid conflicts
+// const API_BASE_URL = '/api'; // removed duplicate declaration
 let isAuthenticated = localStorage.getItem('token') ? true : false;
 var userRole = localStorage.getItem('role') || 'guest';
 var currentUser = {}; // To store the logged-in user's profile data

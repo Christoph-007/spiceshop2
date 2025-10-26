@@ -128,17 +128,39 @@
         }
         .tabs-content { margin-top: 1.5rem; }
         .table { width: 100%; border-collapse: collapse; }
-        .table th, .table td {
+    .table th, .table td {
             padding: 0.75rem;
             text-align: left;
             border-bottom: 1px solid var(--border);
         }
-        .table th { font-weight: 600; color: var(--muted-foreground); background-color: var(--background); }
+    .table th { font-weight: 600; color: var(--muted-foreground); background-color: var(--background); }
         .badge { display: inline-block; padding: 0.25em 0.6em; font-size: 75%; font-weight: 700; line-height: 1; text-align: center; white-space: nowrap; vertical-align: baseline; border-radius: 0.25rem; }
         .badge-success { color: #fff; background-color: #198754; }
         .badge-warning { color: #000; background-color: #ffc107; }
         .space-y-4 > * + * { margin-top: 1rem; }
         .overflow-x-auto { overflow-x: auto; }
+
+        /* Styles for the modal-like Add Merchant form */
+        .add-merchant-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            padding: 1rem;
+        }
+        .add-merchant-card {
+            background-color: var(--card);
+            border-radius: var(--radius);
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
     </style>
 </head>
 <body>
@@ -193,7 +215,10 @@
                 <div id="active-merchants-content" class="tabs-content">
                     <div class="card">
                         <div class="p-6">
-                            <h3 class="text-lg font-semibold mb-4">Verified Merchants</h3>
+                            <div class="flex justify-between items-center mb-4">
+                                <h3 class="text-lg font-semibold">Verified Merchants</h3>
+                                <button class="btn btn-primary" onclick="showAddMerchantForm()">+ Add New Merchant</button>
+                            </div>
                             <div class="overflow-x-auto">
                                 <table class="table">
                                     <thead>
@@ -223,25 +248,51 @@
                 </div>
             </div>
         </main>
+
+        <div id="add-merchant-modal" class="add-merchant-container hidden">
+            <div class="add-merchant-card p-6">
+                <h2 class="text-xl font-semibold mb-4">Add New Merchant</h2>
+                <form id="add-merchant-form" class="space-y-4">
+                    <div>
+                        <label for="new-shop-name" class="block text-sm font-semibold mb-2">Shop Name</label>
+                        <input type="text" id="new-shop-name" class="input" required>
+                    </div>
+                    <div>
+                        <label for="new-email" class="block text-sm font-semibold mb-2">Email</label>
+                        <input type="email" id="new-email" class="input" required>
+                    </div>
+                    <div>
+                        <label for="new-phone" class="block text-sm font-semibold mb-2">Phone</label>
+                        <input type="text" id="new-phone" class="input" required>
+                    </div>
+                    <div>
+                        <label for="new-password" class="block text-sm font-semibold mb-2">Initial Password</label>
+                        <input type="password" id="new-password" class="input" required>
+                    </div>
+                    <div class="flex gap-2 justify-end">
+                        <button type="button" class="btn btn-secondary" onclick="hideAddMerchantForm()">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Add Merchant</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
     </div>
 
+    <!-- Shared API client (authService, adminService, etc.) -->
+    <script src="js/api.js"></script>
     <script>
-      
-        
         let adminIsAuthenticated = false;
+        // Live list from backend
         let merchants = [];
 
-        // --- CONTROLLERS ---
-
-        async function adminLogin() {
+        function adminLogin() {
             adminIsAuthenticated = true;
             document.getElementById('admin-login-page').classList.add('hidden');
             document.getElementById('admin-header').classList.remove('hidden');
             document.getElementById('admin-main-content').classList.remove('hidden');
-            // Load merchants from backend
-            await loadMerchants();
-            // Start on the Pending Requests tab to show required actions first
-            switchMerchantTab('requests');
+            // Load merchants from backend and start on pending tab
+            loadMerchants().then(() => switchMerchantTab('requests'));
         }
 
         function adminLogout() {
@@ -265,23 +316,52 @@
                 renderMerchantsTable(false);
             }
         }
-        
-        // --- ACTIONS ---
+
+        function renderMerchantsTable(isActiveTable) {
+            const filteredMerchants = merchants.filter(m => (m.is_approved || m.isVerified) === isActiveTable);
+            const tbodyId = isActiveTable ? 'active-merchants-table-body' : 'pending-merchants-table-body';
+            const tbody = document.getElementById(tbodyId);
+
+            if (filteredMerchants.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted-foreground py-4">No merchants found.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = filteredMerchants.map(merchant => {
+                const statusBadge = (merchant.is_approved || merchant.isVerified)
+                    ? `<span class="badge badge-success">Active</span>`
+                    : `<span class="badge badge-warning">Pending</span>`;
+                
+                const actionsButtons = isActiveTable
+                    ? `<button class="btn btn-sm btn-destructive" onclick="toggleVerificationStatus('${merchant._id || merchant.id}', false)">Deactivate</button>`
+                    : `
+                        <button class="btn btn-sm btn-primary mr-2" onclick="toggleVerificationStatus('${merchant._id || merchant.id}', true)">Verify</button>
+                        <button class="btn btn-sm btn-secondary" onclick="removeMerchantRequest('${merchant._id || merchant.id}')">Remove</button>
+                    `;
+
+                return `
+                    <tr>
+                        <td>${merchant.shopName || merchant.name || merchant.username || ''}</td>
+                        <td>${merchant.email || ''}</td>
+                        <td>${merchant.phone || merchant.phoneNumber || ''}</td>
+                        <td>${statusBadge}</td>
+                        <td>${actionsButtons}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
 
         async function toggleVerificationStatus(id, newStatus) {
             try {
-                // Call backend approve endpoint when verifying
                 if (newStatus) {
                     await adminService.approveMerchant(id);
                     alert('Merchant approved.');
                 } else {
-                    // For deactivation, we can call delete to remove merchant
                     await adminService.deleteMerchant(id);
                     alert('Merchant deactivated/removed.');
                 }
                 await loadMerchants();
-                // Refresh current tab
-                switchMerchantTab(newStatus ? 'active' : 'active');
+                switchMerchantTab(newStatus ? 'active' : 'requests');
             } catch (err) {
                 console.error('Error updating merchant status:', err);
                 alert('Failed to update merchant status: ' + (err.message || err));
@@ -301,44 +381,59 @@
             }
         }
         
-        // --- VIEW (Renderers) ---
-
-        function renderMerchantsTable(isActiveTable) {
-            const filteredMerchants = merchants.filter(m => (m.is_approved || m.isVerified) === isActiveTable);
-            const tbodyId = isActiveTable ? 'active-merchants-table-body' : 'pending-merchants-table-body';
-            const tbody = document.getElementById(tbodyId);
-
-            if (filteredMerchants.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted-foreground py-4">No ${isActiveTable ? 'active' : 'pending'} merchants found.</td></tr>`;
-                return;
-            }
-
-            tbody.innerHTML = filteredMerchants.map(merchant => {
-                const statusBadge = merchant.isVerified
-                    ? `<span class="badge badge-success">Active</span>`
-                    : `<span class="badge badge-warning">Pending</span>`;
-                
-                const actionsButtons = isActiveTable
-                    ? `<button class="btn btn-sm btn-destructive" onclick="toggleVerificationStatus('${merchant._id || merchant.id}', false)">Deactivate</button>`
-                    : `
-                        <button class="btn btn-sm btn-primary mr-2" onclick="toggleVerificationStatus('${merchant._id || merchant.id}', true)">Verify</button>
-                        <button class="btn btn-sm btn-secondary" onclick="removeMerchantRequest('${merchant._id || merchant.id}')">Remove</button>
-                    `;
-
-                return `
-                    <tr>
-                        <td>${merchant.shopName}</td>
-                        <td>${merchant.email}</td>
-                        <td>${merchant.phone}</td>
-                        <td>${statusBadge}</td>
-                        <td class="flex gap-2">${actionsButtons}</td>
-                    </tr>
-                `;
-            }).join('');
+        // Function to generate a simple sequential ID
+        function generateMerchantId() {
+            const lastId = merchants.reduce((max, m) => {
+                const num = parseInt(m.id.split('-')[1]);
+                return num > max ? num : max;
+            }, 0);
+            const newNum = lastId + 1;
+            return `M-${String(newNum).padStart(3, '0')}`;
         }
 
-        // --- EVENT LISTENERS (Initialization) ---
+        // Functions for the Add Merchant Modal
+        function showAddMerchantForm() {
+            document.getElementById('add-merchant-modal').classList.remove('hidden');
+        }
 
+        function hideAddMerchantForm() {
+            document.getElementById('add-merchant-modal').classList.add('hidden');
+            document.getElementById('add-merchant-form').reset(); // Clear the form
+        }
+
+        function addNewMerchant(e) {
+            e.preventDefault();
+            
+            const shopName = document.getElementById('new-shop-name').value;
+            const email = document.getElementById('new-email').value;
+            const phone = document.getElementById('new-phone').value;
+            // Password is not stored here, but captured for the form submit/API call logic
+            const newPassword = document.getElementById('new-password').value; 
+
+            const newMerchant = {
+                id: generateMerchantId(),
+                shopName: shopName,
+                email: email,
+                phone: phone,
+                isVerified: false // New merchants are always pending
+            };
+
+            // 1. Add the new merchant to the local list
+            merchants.push(newMerchant);
+
+            // 2. Hide the form and notify the admin
+            hideAddMerchantForm();
+            alert(`${shopName} has been added as a Pending Merchant (ID: ${newMerchant.id}).`);
+
+            // 3. Refresh the Pending Requests table and switch to it
+            setTimeout(() => {
+                switchMerchantTab('requests');
+            }, 10);
+        }
+        
+        // --- EVENT LISTENERS ---
+
+        // Admin Login (calls backend)
         document.getElementById('admin-login-form').addEventListener('submit', async function(e) {
             e.preventDefault();
             const email = document.getElementById('admin-email').value;
@@ -346,7 +441,7 @@
             try {
                 const response = await authService.login(email, password);
                 if (response.user && response.user.role === 'admin') {
-                    await adminLogin();
+                    adminLogin();
                 } else {
                     alert('You are not an admin.');
                     authService.logout();
@@ -356,38 +451,32 @@
                 alert('Login failed: ' + (err.message || err));
             }
         });
-        
-        // Initial check to show login form if not authenticated (optional, but good practice)
+
+        // New Add Merchant Form Submission
+        document.getElementById('add-merchant-form').addEventListener('submit', addNewMerchant);
+
+
         // Load merchants from backend
         async function loadMerchants() {
             try {
-                // pending
                 const pending = await adminService.getMerchants('pending');
-                // active/all
                 const active = await adminService.getMerchants();
-
-                // Normalize: backend returns array of users (merchants)
-                merchants = [];
-                if (Array.isArray(active)) merchants = merchants.concat(active.map(u => ({ ...u, is_approved: u.is_approved })));
-                if (Array.isArray(pending)) {
-                    // pending may duplicate, merge by _id
-                    pending.forEach(p => {
-                        if (!merchants.find(m => m._id === p._id)) merchants.push(p);
-                    });
-                }
-                renderMerchantsTable(document.getElementById('tab-active').classList.contains('active'));
+                // Merge uniquely by _id
+                const map = new Map();
+                (active || []).forEach(u => map.set(u._id || u.id, u));
+                (pending || []).forEach(u => {
+                    const id = u._id || u.id;
+                    if (!map.has(id)) map.set(id, u);
+                });
+                merchants = Array.from(map.values());
+                // Refresh current tab
+                const isActive = document.getElementById('tab-active').classList.contains('active');
+                renderMerchantsTable(isActive);
             } catch (err) {
-                console.error('Failed to load merchants from API:', err);
+                console.error('Failed to load merchants:', err);
                 alert('Failed to load merchants: ' + (err.message || err));
             }
         }
-
-        // On DOMContentLoaded, show login page
-        document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('admin-login-page').classList.remove('hidden');
-        });
-
-    
     </script>
 </body>
 </html>

@@ -1,5 +1,5 @@
-// Frontend API service
-const API_BASE_URL = 'http://localhost:5000/api';
+// Frontend API service (use relative path so frontend works when served from backend)
+const API_BASE_URL = '/api';
 
 // Utility function to handle API calls
 async function apiCall(endpoint, method = 'GET', data = null) {

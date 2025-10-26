@@ -1619,8 +1619,8 @@
              });
         });
         // --- Configuration ---
-// ⚠️ CHANGE THIS TO YOUR BACKEND SERVER ADDRESS 
-const API_BASE_URL = 'http://localhost:5000/api'; 
+        // Use relative API path so frontend works when served from backend
+        const API_BASE_URL = '/api'; 
 var isAuthenticated = localStorage.getItem('token') ? true : false;
 let userRole = localStorage.getItem('role') || 'guest';
 let currentUser = {}; // To store the logged-in user's profile data
